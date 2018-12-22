@@ -12,22 +12,27 @@
 #include <vector>
 #include <iostream>
 using namespace std;
+
 //Message Queue Struct
 struct msgbuff
 {
 	long mtype;
 	char mtext[64];
+	int mOpMask;
 };
 
 key_t disk_id;
 
-//Up and Down Message Queue for Processes
-	key_t upqidProcess;
-	key_t downqidProcess;
+key_t upqid;
+key_t downqid;
 
-//Up and Down Message Queue for Disk
-	key_t upqidDisk;
-	key_t downqidDisk;
+// //Up and Down Message Queue for Processes
+// 	key_t upqidProcess;
+// 	key_t downqidProcess;
+
+// //Up and Down Message Queue for Disk
+// 	key_t upqidDisk;
+// 	key_t downqidDisk;
 
 // Variable to Get System Time
 	time_t now;
@@ -38,29 +43,15 @@ key_t disk_id;
 //Logfile parameters
 	FILE *f;
 
-// At first disk sends its id to kernel to save its id
-// Second kernel enters infinte loop
-// if process sends message to kernel  mtype = id of process mtext = ('A'-> ADD ,'D'->DEL) , Actual Message
-// if disk sends message mtype = id of process that requests something ,, mtext = ('A'-> ADD ,'D'->DEL) disk availability
-// kernel sends signal to Disk when process comes
-// kernel sends response back to process after disk response mtype = process id , mtext = result 
-
 void kernelDead(int signum)
 {
 	cout<<"Kernel....\nInterrupt Signal #"<<signum<<" received" <<endl;
 
-	cout<<"Deleting Process message Queues..."<<endl;
+	cout<<"Deleting message Queues..."<<endl;
 	  
-  	msgctl(upqidProcess,IPC_RMID,(struct msqid_ds *)0);
+  	msgctl(upqid,IPC_RMID,(struct msqid_ds *)0);
 
-  	msgctl(downqidProcess,IPC_RMID,(struct msqid_ds *)0);
-
-
-  	cout<<"Deleting Disk message Queues..."<<endl;
-
-  	msgctl(upqidDisk,IPC_RMID,(struct msqid_ds *)0);
-
-  	msgctl(downqidDisk,IPC_RMID,(struct msqid_ds *)0);
+  	msgctl(downqid,IPC_RMID,(struct msqid_ds *)0);
 
 	cout<<"Message Queues deleted ... Dead Kernel"<<endl;
 
@@ -78,18 +69,14 @@ int main()
 	//Signal Handler when Kernel dies
 		signal (SIGINT, kernelDead);
 
-	// Create Process Message Queues
-		upqidProcess = msgget(777,IPC_CREAT|0644);
+	// Create Message Queues
+		upqid = msgget(777,IPC_CREAT|0644);
 
-		downqidProcess = msgget(778,IPC_CREAT|0644);
-
-	// Create Disk Message Queues
-		upqidDisk = msgget(779,IPC_CREAT|0644);
-
-		downqidDisk = msgget(780,IPC_CREAT|0644);
+		downqid = msgget(778,IPC_CREAT|0644);
 
 
 	clockCycles = 0;
+
 	now = time(0);
   	tm = localtime (&now);
   	currentTime = tm->tm_sec;
@@ -103,9 +90,6 @@ int main()
 		    exit(1);
 		}
 
-
-	/* print to log file */
-	// fprintf(f, "Some text: %s %d %f %c\n", char*,int,float,char);
 
 
 	struct msgbuff message;
@@ -196,21 +180,7 @@ int main()
 			}
 			
   		}
-  		
-  // 		rec_val = msgrcv(upqidDisk,&message,sizeof(message.mtext),0,IPC_NOWAIT);
-		// if (rec_val != -1)
-  // 		{
-  // 			//Something receieved from Disk
-  // 			// mtype = process id that sent the request
-
-  // 			int avaliableDisk = stoi(message.mtext);
-  // 			if (avaliableDisk == 0)
-  // 				message.mtext
-		// 	send_val = msgsnd(downqidProcess,&message,sizeof(message.mtext),!IPC_NOWAIT);
-
-  // 		}  		
-
-
+  	
  
 	}
 
