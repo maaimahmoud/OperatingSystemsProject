@@ -64,7 +64,6 @@ void kernelDead(int signum)
 
 int main()
 {
-	vector<int> processes;
 
 	//Signal Handler when Kernel dies
 		signal (SIGINT, kernelDead);
@@ -86,22 +85,47 @@ int main()
 		f = fopen("logfile.txt", "w");
 		if (f == NULL)
 		{
-		    printf("Error opening log file!\n");
+		    cout<<"Error opening log file!\n";
 		    exit(1);
 		}
 
 
 
-	struct msgbuff message;
+	cout<<"Kernel created\n";
 
+
+	cout<<"Kernel waiting for disk to be created\n";
+
+	
 	//Waiting Disk to be Created
 		int rec_val,send_val;
-		rec_val = msgrcv(upqidDisk,&message,sizeof(message.mtext),0,!IPC_NOWAIT);
-		disk_id = message.mtext;
-    		
+
+		struct msgbuff message;
+
+		message.mtype = 0;
+		
+		while(message.mtype != 1)
+		{
+			rec_val = msgrcv(upqidDisk,&message,sizeof(message.mtext),0,!IPC_NOWAIT);
+			if (rec_val != -1 )
+			{
+				if (message.mtype == 1)
+					disk_id = stoi(message.mtext);
+				else
+					cout<<"Message receieved but not the expected type"<<endl;
+			}
+			else
+				cout<<"Cannot recieve message from up queue"<<endl;
+			
+		}
+
+	cout<<"Disk created Successfully\n";
 		  
+
+
   	while (1)
   	{
+
  		// Get Time in seconds
 		  	now = time(0);
 		  	tm = localtime (&now);
@@ -109,74 +133,80 @@ int main()
 		  	{
 		  		currentTime = tm->tm_sec;
 
-		  		//Send SIGUSR2 to all processes every second
-		  		for (int i=0;i<processes.size(),i++)
-			  		kill(processes(i), SIGUSR2);
+			  	killpg(1001, SIGUSR2);
 
 			  	kill(disk_id,SIGUSR2);
 		  	}
   		
 
 		
-		// Recieve from process
-  		rec_val = msgrcv(upqidProcess,&message,sizeof(message.mtext),0,IPC_NOWAIT);
+		// Recieve from process BUT NOT WAIT FOR IT
+  			rec_val = msgrcv(upqid,&message,sizeof(message.mtext),1,IPC_NOWAIT);
 
-  		if (rec_val != -1)
+  		if (rec_val != -1 && message.mtype != 0 && message.mtype != 1)
   		{
   			//Something receieved from process
-  			
-  			if (message.mtype == -1) //Process first time creation
-  			{
-   				processes.push_back(stoi(message.mtext));
-  			}
-  			else
-  			{
-  				// message.mtype equals process id
 
-				//Send signal to Disk to check status 
-					kill(disk_id,SIGUSR1);
+			// message.mtype equals process id
+  			// message.mtext equals "HELLO"
+  			// message.mOpMask 0 for Add , 1 for delete
 
-				// Wait for disk to respond with status
-					struct msgbuff messageDiskStatus;
-					rec_val = msgrcv(upqidDisk,&messageDiskStatus,sizeof(messageDiskStatus.mtext),0,!IPC_NOWAIT);
-					// Recieved mtype contains number of free slots in Disk
-					// Recieved mtext contains ids of slots that are used EXAMPLE "9 8 7 6 4 3 2 1 0 " 
+  			  			
+		
+			//Send signal to Disk to check status 
+				kill(disk_id,SIGUSR1);
 
-				if (rec_val != -1)
-		  		{
-		  			if (message.mtext[0] == 'A') //Process created before and wants to add or something
-					{ // Message is ADD
-						if (messageDiskStatus.mtype == 0)
-							message.mtext = string(2);	
-						else
-							message.mtext = string(0);
+			// Wait for disk to respond with status
+				struct msgbuff messageDiskStatus;
+				rec_val = msgrcv(upqid,&messageDiskStatus,sizeof(messageDiskStatus.mtext),0,!IPC_NOWAIT);
+				// Recieved mtype contains 0 -> status message
+				// Recieved mtext contains No. of free slots
+				// Recieved mOpMask 1s at used slots that are used EXAMPLE "9 8 7 6 4 3 2 1 0 " 
 
-					}
-		  			else if (message.mtext[0] == 'D')
-					{	// Message is DEL
-						int j =0;
-						for (j =0;j<messageDiskStatus.mtext.size();j++)
-							if (messageDiskStatus.mtext[j] == message.mtext[1])
-								break;
-						if (j != messageDiskStatus.mtext.size())
-							message.mtext=string(1);
-						else
-							message.mtext=string(3);
 
-					}
-					else
-					{
-						cout<<"Process is asking for something else not ADD OR DEL !!"<<endl;
-					}
-					
-					// Send feedback to process with mtype = process_id , mtext = response message
-					send_val = msgsnd(downqidProcess,&message,sizeof(message.mtext),IPC_NOWAIT);
-					
-		  		}
-		  		else 
-		  			cout<<"Kernel Cannot recieve value from DISK"<<endl;
-		  		
-			
+			if (rec_val != -1)
+	  		{
+	  			// Status recieved from Disk
+
+
+
+	  	// 		if (message.mtext[0] == 'A') //Process created before and wants to add or something
+				// { // Message is ADD
+				// 	if (messageDiskStatus.mtype == 0)
+				// 		message.mtext = string(2);	
+				// 	else
+				// 		message.mtext = string(0);
+
+				// }
+	  	// 		else if (message.mtext[0] == 'D')
+				// {	// Message is DEL
+				// 	int j =0;
+				// 	for (j =0;j<messageDiskStatus.mtext.size();j++)
+				// 		if (messageDiskStatus.mtext[j] == message.mtext[1])
+				// 			break;
+				// 	if (j != messageDiskStatus.mtext.size())
+				// 		message.mtext=string(1);
+				// 	else
+				// 		message.mtext=string(3);
+
+				// }
+				// else
+				// {
+				// 	cout<<"Process is asking for something else not ADD OR DEL !!"<<endl;
+				// }
+				
+				
+
+
+
+				// Send feedback to process with mtype = process_id , mtext = response message
+				send_val = msgsnd(downqid,&message,sizeof(message.mtext),IPC_NOWAIT);
+				
+	  		}
+	  		else 
+	  			cout<<"Kernel Cannot recieve status from DISK"<<endl;
+	  		
+		
 			}
 			
   		}
