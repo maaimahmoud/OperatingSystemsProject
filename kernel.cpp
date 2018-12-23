@@ -65,7 +65,7 @@ void incrementClk()
 
 	  		cout<<getgid()<<endl;
 
-		  	killpg(1, SIGUSR2);
+		  	killpg(1000, SIGUSR2);
 
 		  	kill(disk_id,SIGUSR2);
 	  	}
