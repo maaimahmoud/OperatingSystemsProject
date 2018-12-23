@@ -21,7 +21,7 @@ struct msgbuff
 	int mOpMask;
 };
 
-key_t disk_id;
+int disk_id;
 
 key_t upqid;
 key_t downqid;
@@ -37,7 +37,7 @@ key_t downqid;
 
 void kernelDead(int signum)
 {
-	cout<<"Kernel....\nInterrupt Signal #"<<signum<<" received" <<endl;
+	cout<<"\nKernel....\nInterrupt Signal #"<<signum<<" received" <<endl;
 
 	cout<<"Deleting message Queues..."<<endl;
 	  
@@ -61,11 +61,23 @@ void incrementClk()
 	  	{
 	  		currentTime = tm->tm_sec;
 
-		  	killpg(1001, SIGUSR2);
+	  		cout<<"Send SIGUSR2"<<endl;
+
+	  		cout<<getgid()<<endl;
+
+		  	killpg(1, SIGUSR2);
 
 		  	kill(disk_id,SIGUSR2);
 	  	}
 	
+}
+
+int convertCharArrToInt(char* arr)
+{
+	string str(arr);
+	cout<<"Covert .. "<<str<<endl;
+	// strcpy(arr,str);
+	return stoi(str);
 }
 
 void waitDiskCreation()
@@ -75,20 +87,18 @@ void waitDiskCreation()
 	int rec_val = msgrcv(upqid,&message,sizeof(message.mtext),2,!IPC_NOWAIT);
 	if (rec_val != -1 )
 	{
-		if (message.mtype == 1)
-			{
-				disk_id = stoi(message.mtext);
-				cout<<"Disk created Successfully\n";
-			}
-		else
-			cout<<"Message receieved but not the expected type"<<endl;
+		disk_id = convertCharArrToInt(message.mtext);
+		cout<<"Disk created Successfully with id = "<<disk_id<<endl;
 	}
+	else
+		cout<<"Cannnot recieve from Disk"<<endl;
 
 }
 
 
 msgbuff requestDiskStatus()
 {
+
 	//Send signal to Disk to check status 
 	kill(disk_id,SIGUSR1);
 
@@ -105,11 +115,19 @@ msgbuff requestDiskStatus()
 	return messageDiskStatus;
 }
 
+void mai(int signum)
+{
+	cout<<" Eh da de SIGUSR2 gat f3lan"<<endl;
+}
+
 int main()
 {
+	cout<<"group id "<<getgid()<<endl;
 
 	//Signal Handler when Kernel dies
 		signal (SIGINT, kernelDead);
+		signal (SIGUSR2, mai);
+
 
 	// Create Message Queues
 		upqid = msgget(777,IPC_CREAT|0644);
@@ -233,9 +251,7 @@ int main()
 				cout<<"feedback message was sent to Process successfully"<<endl;
 			}
 				
-	  		
-		
-			
+	  					
 			
   		}
   	

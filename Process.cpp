@@ -30,8 +30,10 @@ key_t downqid;
 
 int clk=-1;
 
-void clk_inc(int signum){
+void clk_inc(int signum)
+{
 	clk++;
+	cout<<clk<<endl;
 }
 
 
@@ -76,7 +78,27 @@ int get_resp(){
 
 
 
-int main(int argc, char **argv){
+int main(int argc, char **argv)
+{
+	cout<<"process created with pid = "<<getpid()<<"and group id "<<getgid()<<endl;
+	// for (int i=0; i<2000000;i++)
+	// {
+	// 	int result = setpgid(-1,i);
+	// 	if (result != -1)
+	// 		cout<<"Now group id "<<getgid()<<" i = "<<i<<endl;
+	// }		
+	// // cout<<"Now group id "<<getgid()<<endl;
+
+	// cout<<"finished"<<endl;
+
+
+
+
+	//attach clk incrementer handler to signal
+		signal(SIGUSR2,clk_inc);
+
+
+
 	infile.open(argv[1]);
 
 	if(!infile){
@@ -89,13 +111,11 @@ int main(int argc, char **argv){
 
 	downqid = msgget(778,IPC_CREAT|0644);
 
-	//attach clk incrementer handler to signal
-	signal(SIGUSR2,clk_inc);
-
 
 	// read file contents --- assuming commands are sorted 
 	string line, op, mess;
 	int time;
+
 	while(infile>>time){
 		infile>>op;
 
