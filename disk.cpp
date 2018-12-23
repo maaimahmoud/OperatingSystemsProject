@@ -24,7 +24,9 @@ key_t downqid;
 
 int CLK;
 
-int mOpMask;
+int Mask;
+
+int finishTime;
 
 //Message Queue Struct
 struct msgbuff
@@ -38,7 +40,8 @@ struct msgbuff
 void clkIncrement(int signum)
 {
 	CLK += 1;
-	cout<<CLK<<endl;
+
+	// cout<<CLK<<endl;
 }
 
 void convert(int n,char* result)
@@ -58,13 +61,14 @@ void handle_SU1(int signum)
 	    count_free += 1;
 
 	//send a message with the number of free slots; 
-	msgbuff status_msg;
+	struct msgbuff status_msg;
 
-	status_msg.mtype = 1 ; 
-	status_msg.mOpMask = mOpMask;
+	status_msg.mtype = 3 ; 
+	status_msg.mOpMask = Mask;
+	convert(count_free,status_msg.mtext);
 	
 	
-	int send_val = msgsnd(upqid,&status_msg,sizeof(status_msg.mtext),!IPC_NOWAIT);
+	int send_val = msgsnd(upqid,&status_msg,sizeof(status_msg),!IPC_NOWAIT);
 
 	if(send_val == -1)
 		perror("ERROR IN SENDING STATUS");	
@@ -82,7 +86,7 @@ void init()
 	
 	msgbuff init_msg;
 
-	init_msg.mtype = 2;
+	init_msg.mtype = 1;
 
 	convert(getpid(),init_msg.mtext);
 
@@ -98,17 +102,22 @@ void init()
 	for(int i = 0;i < 10;i++)
 		taken[i] = false;
 
-	mOpMask = 0;
+	Mask = 0;
 	
 	
 	//Start clk	
 		CLK = 0;
+
+	finishTime = -1;
 	
 }
 
 
 bool save_data(msgbuff msg)
 {
+	finishTime = CLK + 3;
+	cout<<"CLK = " << CLK<<"Finish time = "<<finishTime<<endl;
+
 	int i;
 
 	for (i = 0;i<10;i++)
@@ -117,25 +126,30 @@ bool save_data(msgbuff msg)
 
 	strcpy(space[i],msg.mtext);
 
-	mOpMask = mOpMask | 1<<i;
+	Mask = Mask | 1<<i;
+	taken[i] = true;
 
 	return true;
 	
 }
 bool  free_slot(msgbuff msg)
 {
+	finishTime = CLK + 1;
+	cout<<"CLK = " << CLK<<"Finish time = "<<finishTime<<endl;
+	
 
 	string s;
-	int y;
-	s = msg.mtext;
-	std::istringstream ss(s);
-	ss >> y;
+	int y = (int)(msg.mtext[0]) ; 
+	// s = msg.mtext;
+	// std::istringstream ss(s);
+	// ss >> y;
 
 	if(y<0 and y>9)
 		return false;
+
 	taken[y] = false;
 
-	mOpMask = mOpMask & !(1<<y);
+	Mask = Mask & !(1<<y);
 
 
 	return true;
@@ -143,7 +157,8 @@ bool  free_slot(msgbuff msg)
 
 void handle_message(msgbuff msg)
 {
-	int message_type = msg.mtype;
+	cout<<"Opeation was receieved with mtype= "<<msg.mtype<<" mOpMask"<<msg.mOpMask<<" mtext"<<msg.mtext<<endl;
+	int message_type = msg.mOpMask;
 
 	if (message_type == 0)
 		save_data(msg);
@@ -162,17 +177,33 @@ int main()
 
 	init();
 
-	msgbuff message;
+	struct msgbuff message;
 
 	while(true)
 	{
-		
-		int rec_val = msgrcv(downqid, &message, sizeof(message.mtext),0, !IPC_NOWAIT); 
+		int rec_val = msgrcv(downqid, &message, sizeof(message),0, IPC_NOWAIT); 
 	
-		if(rec_val == -1)
-			continue;
-		else
+		if(rec_val != -1)
 			handle_message(message);
+			
+
+	
+		if (finishTime <= CLK && finishTime != -1)
+		{
+			cout<<"I am free"<<endl;
+
+			convert(message.mtype,message.mtext);
+
+			message.mtype = 3;
+
+			int send_val = msgsnd(upqid,&message,sizeof(message),IPC_NOWAIT);
+
+			if (send_val != -1)
+				cout<<"finish message was sent successfully to kernel"<<endl;
+
+
+			finishTime = -1;
+		}
 	}
 
 	return 0;

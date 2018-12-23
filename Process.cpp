@@ -25,6 +25,7 @@ struct msgbuff
 	int mOpMask;
 };
 
+
 key_t upqid;
 key_t downqid;
 
@@ -33,13 +34,13 @@ int clk=-1;
 void clk_inc(int signum)
 {
 	clk++;
-	cout<<clk<<endl;
+	// cout<<clk<<endl;
 }
 
 
 void send_msg(string op, string mess){
 	mess.erase(0,1);
-	msgbuff msg;
+	struct msgbuff msg;
 	if(toupper(op[0])=='A')
 		msg.mOpMask=0;
 	else
@@ -65,7 +66,7 @@ void send_msg(string op, string mess){
 
 
 int get_resp(){
-	msgbuff msg;
+	struct msgbuff msg;
 
 	int rec_val= msgrcv(downqid, &msg,sizeof(msg),getpid(),!IPC_NOWAIT);
 
@@ -76,26 +77,34 @@ int get_resp(){
 }
 
 
+void send_pid()
+{
+
+	struct  msgbuff msg;
+
+	msg.mtype=2;
+	msg.mOpMask=getpid();
+	// pid_msg.mtext="heloo here i am";
+	string mai = "Hello";
+	strcpy(msg.mtext,mai.c_str());
+
+	int send_val = msgsnd(upqid,&msg,sizeof(msg), !IPC_NOWAIT);
+
+	if(send_val==-1)
+		cout<<"Error in sending PID from process "<<endl;
+
+}
+
+
 
 
 int main(int argc, char **argv)
 {
-	cout<<"process created with pid = "<<getpid()<<"and group id "<<getgid()<<endl;
-	// for (int i=0; i<2000000;i++)
-	// {
-	// 	int result = setpgid(-1,i);
-	// 	if (result != -1)
-	// 		cout<<"Now group id "<<getgid()<<" i = "<<i<<endl;
-	// }		
-	// // cout<<"Now group id "<<getgid()<<endl;
-
-	// cout<<"finished"<<endl;
-
-
+	
 
 
 	//attach clk incrementer handler to signal
-		signal(SIGUSR2,clk_inc);
+	signal(SIGUSR2,clk_inc);
 
 
 
@@ -110,6 +119,10 @@ int main(int argc, char **argv)
 	upqid = msgget(777,IPC_CREAT|0644);
 
 	downqid = msgget(778,IPC_CREAT|0644);
+
+	cout<<"Up queue with id = "<<upqid << " Down queue with id = "<<downqid<<endl;
+
+	send_pid();
 
 
 	// read file contents --- assuming commands are sorted 
@@ -128,7 +141,7 @@ int main(int argc, char **argv)
 		}
 		send_msg(op,mess);
 		int resp=get_resp();
-		if(resp==1|| resp==0)
+		if(resp==1|| resp==3)
 			cout<<"Wass able to "<< op<<mess<<" successfully!"<<endl;
 		else
 			cout<<"Was not able to "<< op<<mess<<endl;

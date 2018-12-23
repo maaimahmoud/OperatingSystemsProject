@@ -35,6 +35,19 @@ key_t downqid;
 //Logfile parameters
 	FILE *f;
 
+//Messages
+	struct msgbuff message;
+	struct msgbuff messageDiskStatus;
+	struct msgbuff messageRequestToDisk;
+
+	int rec_val,send_val;
+
+	bool diskBusy = false;	  
+
+
+
+vector<int>connectedProcesses;
+
 void kernelDead(int signum)
 {
 	cout<<"\nKernel....\nInterrupt Signal #"<<signum<<" received" <<endl;
@@ -52,6 +65,26 @@ void kernelDead(int signum)
   	exit(-1);
 }
 
+
+////////////////////////////////////////////////////////////////////
+
+void send_message(msgbuff sentMessage,int n)
+{
+	string s;
+	if (n == 0)
+		s = "process";
+	else
+		s = "disk";
+
+	send_val = msgsnd(downqid,&sentMessage,sizeof(sentMessage),IPC_NOWAIT);
+				
+	if (send_val == -1)
+		cout<<"Cannot send message to process"<<endl;
+
+}
+
+////////////////////////////////////////////////////////////////////
+
 void incrementClk()
 {
 	// Get Time in seconds
@@ -61,30 +94,32 @@ void incrementClk()
 	  	{
 	  		currentTime = tm->tm_sec;
 
-	  		cout<<"Send SIGUSR2"<<endl;
-
-	  		cout<<getgid()<<endl;
-
-		  	killpg(1000, SIGUSR2);
+	  		for (int i = 0; i < connectedProcesses.size(); ++i)
+	  		{
+	  			kill(connectedProcesses[i],SIGUSR2);
+	  		}
 
 		  	kill(disk_id,SIGUSR2);
 	  	}
 	
 }
 
+////////////////////////////////////////////////////////////////////
+
 int convertCharArrToInt(char* arr)
 {
 	string str(arr);
-	cout<<"Covert .. "<<str<<endl;
-	// strcpy(arr,str);
+
 	return stoi(str);
 }
+
+////////////////////////////////////////////////////////////////////
 
 void waitDiskCreation()
 {
 	struct msgbuff message;
 
-	int rec_val = msgrcv(upqid,&message,sizeof(message.mtext),2,!IPC_NOWAIT);
+	int rec_val = msgrcv(upqid,&message,sizeof(message.mtext),1,!IPC_NOWAIT);
 	if (rec_val != -1 )
 	{
 		disk_id = convertCharArrToInt(message.mtext);
@@ -95,38 +130,120 @@ void waitDiskCreation()
 
 }
 
+////////////////////////////////////////////////////////////////////
 
-msgbuff requestDiskStatus()
+struct msgbuff requestDiskStatus()
 {
 
 	//Send signal to Disk to check status 
 	kill(disk_id,SIGUSR1);
 
 	// Wait for disk to respond with status
-		msgbuff messageDiskStatus;
-		int rec_val = msgrcv(upqid,&messageDiskStatus,sizeof(messageDiskStatus.mtext),1,!IPC_NOWAIT);
-		// Recieved mtype contains 0 -> status message
-		// Recieved mtext contains No. of free slots
-		// Recieved mOpMask 1s at used slots that are used EXAMPLE "9 8 7 6 4 3 2 1 0 " 
+		struct msgbuff messageDiskStatus;
+		int rec_val = msgrcv(upqid,&messageDiskStatus,sizeof(messageDiskStatus),3,!IPC_NOWAIT);
 
-		if (rec_val != -1)
+		if (rec_val == -1)
 			cout<<"Cannot receive status from disk"<<endl;
 
 	return messageDiskStatus;
 }
 
-void mai(int signum)
+////////////////////////////////////////////////////////////////////
+
+
+void handleProcessOperation()
 {
-	cout<<" Eh da de SIGUSR2 gat f3lan"<<endl;
+	// Check if it is valid to do the operation
+
+	if (message.mOpMask == 0) // Add operation
+	{
+
+		if (convertCharArrToInt(messageDiskStatus.mtext) == 0)
+			message.mOpMask = 2; // if no empty slots
+		else
+		{
+			// empty slot exists
+			message.mOpMask = 1;
+			diskBusy = true;
+		}
+	}
+	else
+	{	
+		
+		int state = messageDiskStatus.mOpMask;
+		int deletedSlot = (int)( message.mtext[0]);
+
+
+		if ((state >> deletedSlot) & 1)
+		{
+			// Slot is used
+			message.mOpMask = 3;
+			diskBusy = true;
+		}
+		else
+			message.mOpMask = 4; // Slot is empty
+		
+	}
 }
+
+////////////////////////////////////////////////////////////////////
+
+// msgbuff createCopy(msgbuff copied)
+// {
+// 	msgbuff newMsg;
+// 	newMsg.mtype = copied.mtype;
+// 	newMsg.mOpMask = copied.mOpMask;
+
+// 	strcpy(newMsg.mtext,copied.mtext); 
+// 	return newMsg;
+// }
+
+////////////////////////////////////////////////////////////////////
+
+
+void messageFromProcess()
+{
+
+	//Something receieved from process
+
+		if (message.mtype == 2)
+		{	
+			connectedProcesses.push_back(message.mOpMask);
+			cout<<"Process created"<<endl;
+		}
+
+		else
+		{
+
+			messageDiskStatus = requestDiskStatus();
+
+			cout<<"Disk Status : free : "<<messageDiskStatus.mtext<<" Mask :"<<messageDiskStatus.mOpMask<<endl;
+	
+
+			messageRequestToDisk = message;
+			
+
+			
+			handleProcessOperation();
+
+
+			if (diskBusy == true)
+				send_message(messageRequestToDisk,1);
+			else
+				send_message(message,0);
+	  					
+			
+  		}
+	  		
+}
+
+////////////////////////////////////////////////////////////////////
 
 int main()
 {
-	cout<<"group id "<<getgid()<<endl;
 
 	//Signal Handler when Kernel dies
 		signal (SIGINT, kernelDead);
-		signal (SIGUSR2, mai);
 
 
 	// Create Message Queues
@@ -134,12 +251,10 @@ int main()
 
 		downqid = msgget(778,IPC_CREAT|0644);
 
-
-	clockCycles = 0;
-
-	now = time(0);
-  	tm = localtime (&now);
-  	currentTime = tm->tm_sec;
+	//Intialization of Time parameters
+		now = time(0);
+	  	tm = localtime (&now);
+	  	currentTime = tm->tm_sec;
 
 	
 	//Create Log File
@@ -151,112 +266,42 @@ int main()
 		}
 
 
-
-	cout<<"Kernel created\n";
-
-
-	cout<<"Kernel waiting for disk to be created\n";
+	cout<<"Kernel created and waiting for disk to be created\n";
 
 	
-	//Waiting Disk to be Created
-		int rec_val,send_val;
 
-	waitDiskCreation();		  
+	waitDiskCreation();	
 
 
   	while (1)
   	{
+  		incrementClk();	
+		
 
- 		incrementClk();	
-
-		msgbuff message;
 		// check if message recieved from process BUT NOT WAIT FOR IT
-  			rec_val = msgrcv(upqid,&message,sizeof(message.mtext),0,IPC_NOWAIT);
-
-  		if (rec_val != -1 && message.mtype != 0 && message.mtype != 1)
+  			rec_val = msgrcv(upqid,&message,sizeof(message),3, IPC_NOWAIT);
+  		if (rec_val != -1)
   		{
-  			//Something receieved from process
-
-			// message.mtype equals process id
-  			// message.mtext equals "HELLO"
-  			// message.mOpMask 0 for Add , 1 for delete
-
-  			  			
-			
-			msgbuff messageDiskStatus = requestDiskStatus();
-
-			// Status recieved from Disk
-			msgbuff messageRequestToDisk;
-
-			messageRequestToDisk.mtype = message.mOpMask; //0 -> ADD  1-> DEL
-			// messageRequestToDisk.mtext = message.mtext; //Hello
-			strcpy(messageRequestToDisk.mtext,message.mtext);
-			// message.mtext = '';
-			strcpy(message.mtext,"");
-			messageRequestToDisk.mOpMask = 0; // 0 if valid 1 if not valid
-
-			// Check if it is valid to do the operation
-				if (message.mOpMask == 0) // Add operation
-				{
-					if (stoi(messageDiskStatus.mtext) == 0)
-					{
-						 // if no empty slots
-						message.mtext[0] = '2';
-						messageRequestToDisk.mOpMask = 1;
-					}
-					else
-					{
-						// empty slot exists
-						message.mtext[0] = '1';
-					}
-				}
-				else
-				{	
-					
-					int state = messageDiskStatus.mOpMask;
-					int deletedSlot = stoi(message.mtext);
-					if ((state >> deletedSlot) & 1)
-					{
-						// Slot is used
-						message.mtext[0] = '3';
-					}
-					else
-					{
-						// Slot is empty
-						messageRequestToDisk.mOpMask = 1;
-						message.mtext[0] = '4';
-
-					}
-					
-				}
-
-			send_val = msgsnd(downqid,&messageRequestToDisk,sizeof(messageRequestToDisk.mtext),IPC_NOWAIT);
-			if (send_val == -1)
-			{
-				cout<<"Cannot send message to Disk to do perform the operation"<<endl;
-			}
-			else
-			{
-				cout<<"Operation message was sent to Disk successfully"<<endl;
-			}
-
-			// Send feedback to process with mtype = process_id , mtext = response message
-				send_val = msgsnd(downqid,&message,sizeof(message.mtext),IPC_NOWAIT);
-			if (send_val == -1)
-			{
-				cout<<"Cannot send feedback to process"<<endl;
-			}
-			else
-			{
-				cout<<"feedback message was sent to Process successfully"<<endl;
-			}
-				
-	  					
-			
+  			cout<<"Disk is now free"<<endl;
+  			diskBusy = false;
   		}
-  	
- 
-	}
+
+
+ 		
+		if (diskBusy == false)
+		{
+
+			// check if message recieved from process BUT NOT WAIT FOR IT
+	  			rec_val = msgrcv(upqid,&message,sizeof(message),0, IPC_NOWAIT);
+
+
+	  		if (rec_val != -1)
+  				messageFromProcess();
+
+  		}	
+
+  	}
+
 
 	return 0;
 }
