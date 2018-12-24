@@ -1,3 +1,25 @@
-2 ADD “Hello”
-13 ADD “This is me"
-17 DEL 0
+1 add "hi"
+2 add "lol"
+3 del 5
+4 add "here"
+5 add "stuff"
+6 add "somthing"
+7 add "bored"
+8 add "kill me"
+9 add "now"
+10 add "almost"
+11 add "10 slots full"
+12 add "can't add"
+13 del 0
+13 add "now can i?"
+13 del 0
+13 del 1
+13 del 2
+13 del 3
+13 del 4
+13 del 5
+13 del 6
+13 del 7
+13 del 8
+13 del 9
+14 del 7
