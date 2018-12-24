@@ -100,18 +100,33 @@ void send_pid()
 
 }
 
+void die()
+{
+	struct  msgbuff msg;
 
+	msg.mtype=5; //getting killed, remove me from the p_vector.
+	msg.mOpMask=getpid();
+	// pid_msg.mtext="heloo here i am";
+	string mai = "GOOD BYE!";
+	strcpy(msg.mtext,mai.c_str());
 
+	int send_val = msgsnd(upqid,&msg,sizeof(msg), !IPC_NOWAIT);
 
-int main(int argc, char **argv)
+	if(send_val==-1)
+		cout<<"Error in sending PID from process "<<endl;
+
+	exit(1);
+
+}
+
+int main(int argc,char ** argv)
 {
 	
 
 
 	//attach clk incrementer handler to signal
 	signal(SIGUSR2,clk_inc);
-
-
+	// signal(SIGINT,die);
 
 	infile.open(argv[1]);
 
@@ -147,7 +162,7 @@ int main(int argc, char **argv)
 		send_msg(op,mess);
 		int resp=get_resp();
 		if(resp==1|| resp==3)
-			cout<<"Wass able to "<< op<<mess<<" successfully!"<<endl;
+			cout<<"Was able to "<< op<<mess<<" successfully!"<<endl;
 		else
 			cout<<"Was not able to "<< op<<mess<<endl;
 
@@ -156,8 +171,9 @@ int main(int argc, char **argv)
 
 	//while(1){}
 
-	infile.close();
+	die();
 
+	infile.close();
 
 
 
