@@ -116,7 +116,7 @@ void init()
 bool save_data(msgbuff msg)
 {
 	finishTime = CLK + 3;
-	cout<<"CLK = " << CLK<<"Finish time = "<<finishTime<<endl;
+	//cout<<"CLK = " << CLK<<"Finish time = "<<finishTime<<endl;
 
 	int i;
 
@@ -135,21 +135,24 @@ bool save_data(msgbuff msg)
 bool  free_slot(msgbuff msg)
 {
 	finishTime = CLK + 1;
-	cout<<"CLK = " << CLK<<"Finish time = "<<finishTime<<endl;
+	//cout<<"CLK = " << CLK<<"Finish time = "<<finishTime<<endl;
 	
 
 	string s;
-	int y = (int)(msg.mtext[0]) ; 
+	int y = (int)(msg.mtext[0]-'0') ; 
+	cout<<"emptying slot "<<y<<endl;
 	// s = msg.mtext;
 	// std::istringstream ss(s);
 	// ss >> y;
 
-	if(y<0 and y>9)
+	if(y<0 and y>9){
+		cout<<"not gonna free it up sorry"<<endl;
 		return false;
+	}
 
 	taken[y] = false;
 
-	Mask = Mask & !(1<<y);
+	Mask = Mask & ~(1<<y);
 
 
 	return true;
@@ -181,28 +184,34 @@ int main()
 
 	while(true)
 	{
-		int rec_val = msgrcv(downqid, &message, sizeof(message),0, IPC_NOWAIT); 
-	
-		if(rec_val != -1)
-			handle_message(message);
+		
 			
 
 	
 		if (finishTime <= CLK && finishTime != -1)
 		{
-			cout<<"I am free"<<endl;
+			//cout<<"I am free"<<endl;
+			cout<<"finished at ::"<< CLK<<endl;
 
 			convert(message.mtype,message.mtext);
 
-			message.mtype = 3;
+			message.mtype = 4;
 
 			int send_val = msgsnd(upqid,&message,sizeof(message),IPC_NOWAIT);
 
-			if (send_val != -1)
-				cout<<"finish message was sent successfully to kernel"<<endl;
+			//if (send_val != -1)
+				//cout<<"finish message was sent successfully to kernel"<<endl;
 
 
 			finishTime = -1;
+		}
+		else{
+
+			int rec_val = msgrcv(downqid, &message, sizeof(message),0, IPC_NOWAIT); 
+	
+			if(rec_val != -1)
+				handle_message(message);
+
 		}
 	}
 
