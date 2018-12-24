@@ -11,6 +11,8 @@
 #include <math.h>
 #include <vector>
 #include <iostream>
+#include <fstream>
+#include <algorithm>
 using namespace std;
 
 //Message Queue Struct
@@ -33,7 +35,9 @@ key_t downqid;
 	int currentTime;
 
 //Logfile parameters
-	FILE *f;
+	ofstream f;
+
+	//f.open("l.txt",std::ofstream::app|std::ofstream::out);
 
 //Messages
 	struct msgbuff message;
@@ -48,70 +52,8 @@ key_t downqid;
 
 vector<int>connectedProcesses;
 
-
-void incrementClk()
-{
-	// Get Time in seconds
-	  	now = time(0);
-	  	tm = localtime (&now);
-	  	if (tm->tm_sec != currentTime)
-	  	{
-	  		currentTime = tm->tm_sec;
-
-	  		for (int i = 0; i < connectedProcesses.size(); ++i)
-	  		{
-	  			kill(connectedProcesses[i],SIGUSR2);
-	  		}
-
-		  	kill(disk_id,SIGUSR2);
-	  	}
-	
-}
-
-
-void kernelDead(int signum)
-{
-	cout<<"\nKernel....\nInterrupt Signal #"<<signum<<" received" <<endl;
-
-	cout<<"Deleting message Queues..."<<endl;
-	  
-  	msgctl(upqid,IPC_RMID,(struct msqid_ds *)0);
-
-  	msgctl(downqid,IPC_RMID,(struct msqid_ds *)0);
-
-	cout<<"Message Queues deleted ... Dead Kernel"<<endl;
-
-	fclose(f);
-
-  	exit(-1);
-}
-
-
 ////////////////////////////////////////////////////////////////////
 
-void send_message(msgbuff &sentMessage,int n)
-{
-	string s;
-	if (n == 0)
-		s = "process";
-	else
-		s = "disk";
-	
-	int send_vall=-1;
-
-	//while(send_vall==-1){
-		send_vall = msgsnd(downqid,&sentMessage,sizeof(sentMessage),IPC_NOWAIT);
-		//incrementClk();
-
-	//}
-				
-	//	cout<<"Cannot send message to"<<s<<endl;
-
-}
-
-////////////////////////////////////////////////////////////////////
-
-////////////////////////////////////////////////////////////////////
 
 int convertCharArrToInt(char* arr)
 {
@@ -126,14 +68,71 @@ void waitDiskCreation()
 {
 	struct msgbuff message;
 
-	int rec_val = msgrcv(upqid,&message,sizeof(message.mtext),1,!IPC_NOWAIT);
+	int rec_val = msgrcv(upqid,&message,sizeof(message),1,!IPC_NOWAIT);
+
 	if (rec_val != -1 )
 	{
 		disk_id = convertCharArrToInt(message.mtext);
+
 		cout<<"Disk created Successfully with id = "<<disk_id<<endl;
 	}
 	else
-		cout<<"Cannnot recieve from Disk"<<endl;
+		cout<<"Cannnot recieve id from Disk"<<endl;
+
+}
+
+
+////////////////////////////////////////////////////////////////////
+
+
+void incrementClk()
+{
+	// Get Time in seconds
+	  	now = time(0);
+	  	tm = localtime (&now);
+	  	if (tm->tm_sec != currentTime)
+	  	{
+	  		currentTime = tm->tm_sec;
+	  		clockCycles++;
+
+	  		for (int i = 0; i < connectedProcesses.size(); ++i)
+	  		{
+	  			kill(connectedProcesses[i],SIGUSR2);
+	  			// cout<<"Sending SIGUSR2 to process with pid = "<<connectedProcesses[i]<<endl;
+	  		}
+
+		  	int diskStatus = kill(disk_id,SIGUSR2);
+		  	if (diskStatus == -1)
+		  	{
+		  		cout<<"ERORR NOT DISK !!!"<<endl;
+		  		cout<<"WAITING DISK TO CONNECT AGAIN"<<endl;
+		  		waitDiskCreation();
+		  		diskBusy = false;
+		  	}
+	  	}
+	
+}
+
+
+
+
+
+////////////////////////////////////////////////////////////////////
+
+void send_message(msgbuff &sentMessage,int n)
+{
+	string s;
+	if (n == 0)
+		s = "process";
+	else
+		s = "disk";
+	
+	// int send_vall=-1;
+
+	int send_vall = msgsnd(downqid,&sentMessage,sizeof(sentMessage),IPC_NOWAIT);
+
+	if(send_vall==-1)
+		f<<"ERROR Cannot send [ " <<sentMessage.mtext<<" ] to"<<s<<endl;
 
 }
 
@@ -147,13 +146,13 @@ struct msgbuff requestDiskStatus()
 
 	// Wait for disk to respond with status
 		struct msgbuff messageDiskStatus;
+
 		int rec_val = msgrcv(upqid,&messageDiskStatus,sizeof(messageDiskStatus),3,!IPC_NOWAIT);
 
 		if (rec_val == -1)
 			cout<<"Cannot receive status from disk"<<endl;
 
 		
-
 	return messageDiskStatus;
 }
 
@@ -162,14 +161,16 @@ struct msgbuff requestDiskStatus()
 
 void handleProcessOperation()
 {
+
 	// Check if it is valid to do the operation
 
 	if (message.mOpMask == 0) // Add operation
 	{
-
+		f<<"Process requests to add message[ "<< message.mtext<<" ] "<<endl<<flush;  
 		if (convertCharArrToInt(messageDiskStatus.mtext) == 0){
-			cout<<"fulllll"<<endl;
+			// cout<<"fulllll"<<endl;
 			message.mOpMask = 2; // if no empty slots
+			f<<"Add Operation is not valid, No Empty Slots\n"<<flush;
 		}
 		else
 		{
@@ -177,6 +178,7 @@ void handleProcessOperation()
 			message.mOpMask = 1;
 			messageRequestToDisk.mOpMask=0; 
 			diskBusy = true;
+			f<<"Add Operation is valid\n"<<flush;
 		}
 	}
 	else
@@ -184,33 +186,28 @@ void handleProcessOperation()
 		
 		int state = messageDiskStatus.mOpMask;
 		int deletedSlot = (int)( message.mtext[0]-'0');
-
+		f<<"Process requests to delete slot number [ "<< deletedSlot<<" ] From the process with pid "<<message.mtype<<"\n"<<flush;  
 		
 		if ((state & (1<<deletedSlot))>0)
 		{
+			f<<"Delete Operation is valid\n"<<flush;
 			// Slot is used
 			message.mOpMask = 3;
-			cout<<"want to del "<< deletedSlot<<endl;
+			// cout<<"want to del "<< deletedSlot<<endl;
 			messageRequestToDisk.mOpMask=1; 
 			diskBusy = true;
 		}
 		else
-			message.mOpMask = 4; // Slot is empty
+			{
+				message.mOpMask = 4; // Slot is empty
+				f<<"Delete Operation is not valid, Nothing to Delete\n"<<flush;
+
+			}
 		
 	}
+
+
 }
-
-////////////////////////////////////////////////////////////////////
-
-// msgbuff createCopy(msgbuff copied)
-// {
-// 	msgbuff newMsg;
-// 	newMsg.mtype = copied.mtype;
-// 	newMsg.mOpMask = copied.mOpMask;
-
-// 	strcpy(newMsg.mtext,copied.mtext); 
-// 	return newMsg;
-// }
 
 ////////////////////////////////////////////////////////////////////
 
@@ -218,23 +215,41 @@ void handleProcessOperation()
 void messageFromProcess()
 {
 
+
 	//Something receieved from process
 
 		if (message.mtype == 2) // process sending me its ID
 		{	
 			connectedProcesses.push_back(message.mOpMask);
-			cout<<"Process created"<<endl;
-		}
 
+			f << "**********************"<<endl;
+			f<< " Process created with pid = "<<message.mOpMask<<" AT time slot = "<<clockCycles<<endl;
+			f << "**********************"<<endl;
+		}
+		else if (message.mtype == 5)
+		{
+			f<<"Process with pid = "<<message.mOpMask <<" terminated"<<endl;
+			//delete process from vector
+			connectedProcesses.erase(std::remove(connectedProcesses.begin(),connectedProcesses.end(),message.mOpMask),connectedProcesses.end());
+
+		}
 		else
 		{
 
+			f << "----------------------"<<endl;
+
+
+			f << "PROCESS IS with pid = "<<message.mtype<<" Requesting operation ..."<<" AT time slot = "<<clockCycles<<endl;
+
 			messageDiskStatus = requestDiskStatus();
 
-			cout<<"Disk Status : free : "<<messageDiskStatus.mtext<<" Mask :"<<messageDiskStatus.mOpMask<<endl;
+			f<<"Requesting Disk Status \n"<<flush;
+
+
+			f<<"Disk Status --> free slots = "<<messageDiskStatus.mtext<<" Mask = "<<messageDiskStatus.mOpMask<<endl;
 	
 
-			
+			// f.flush();
 			
 
 			
@@ -244,23 +259,78 @@ void messageFromProcess()
 
 
 			if (diskBusy == true){
+
+				f<<"Request was sent to Disk ... AT time slot "<<clockCycles<< endl<<flush;
 				send_message(message,0);
 				messageRequestToDisk.mtype=5; 
 				strcpy(messageRequestToDisk.mtext,message.mtext);
 				send_message(messageRequestToDisk,1);
 			}
 			else
+			{
+				f<<"Respond was sent to Process Successfully \n";
 				send_message(message,0);
-	  					
+	  		}	
+
+	
 			
   		}
+  		
 	  		
+}
+
+////////////////////////////////////////////////////////////////////
+
+
+void kernelDead(int signum)
+{
+	cout<<"\nKernel....\nInterrupt Signal #"<<signum<<" received" <<endl;
+
+	rec_val = 0;
+	
+	while(rec_val != -1 )
+	{
+		rec_val = msgrcv(upqid,&message,sizeof(message),0,!IPC_NOWAIT);
+
+		if(rec_val != -1)
+		{
+
+			if(message.mtype == 2)
+				messageFromProcess();
+
+		}
+	}
+
+	for (int i = 0; i < connectedProcesses.size(); ++i)
+	  	{
+	  		kill(connectedProcesses[i],SIGINT);
+	  	}
+
+	kill(disk_id,SIGINT);
+
+
+	cout<<"Deleting message Queues..."<<endl;
+	  
+  	msgctl(upqid,IPC_RMID,(struct msqid_ds *)0);
+
+  	msgctl(downqid,IPC_RMID,(struct msqid_ds *)0);
+
+	cout<<"Message Queues deleted ... Dead Kernel"<<endl;
+
+	f.close();
+
+  	exit(0);
 }
 
 ////////////////////////////////////////////////////////////////////
 
 int main()
 {
+	f.open("logfile.txt");
+	if(!f.is_open())
+	{
+		cout<<"Error opening log file!\n";
+	}
 
 	//Signal Handler when Kernel dies
 		signal (SIGINT, kernelDead);
@@ -276,14 +346,6 @@ int main()
 	  	tm = localtime (&now);
 	  	currentTime = tm->tm_sec;
 
-	
-	//Create Log File
-		f = fopen("logfile.txt", "w");
-		if (f == NULL)
-		{
-		    cout<<"Error opening log file!\n";
-		    exit(1);
-		}
 
 
 	cout<<"Kernel created and waiting for disk to be created\n";
@@ -292,21 +354,24 @@ int main()
 
 	waitDiskCreation();	
 
-	cout<<"Disk created"<<endl;
+	// cout<<"Disk created"<<endl;
 
 
   	while (1)
   	{
-  		incrementClk();	
+    	incrementClk();	
 		
-  		if(diskBusy==true){
+  		if(diskBusy==true)
+  		{
   			// check if message recieved from disk to tell me it is free now
 
   			rec_val = msgrcv(upqid,&message,sizeof(message),4, IPC_NOWAIT);
 	  		if (rec_val != -1)
 	  		{
-	  			cout<<"Disk is now free at time "<<now<<endl;
+	  			// cout<<"Disk is now free at time "<<now<<endl;
 	  			diskBusy = false;
+	  			f << "Disk has finished requested operation AT Time slot "<<clockCycles<<endl;
+		  		f << "----------------------"<<endl<<endl;	
 	  		}
 
   		}
@@ -319,11 +384,8 @@ int main()
 			// check if message recieved from process BUT NOT WAIT FOR IT
 	  			rec_val = msgrcv(upqid,&message,sizeof(message),0, IPC_NOWAIT);
 
-
 	  		if (rec_val != -1)
-	  		{
   				messageFromProcess();
-	  		}
 
   		}	
 
