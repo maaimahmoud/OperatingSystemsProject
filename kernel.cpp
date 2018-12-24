@@ -48,6 +48,27 @@ key_t downqid;
 
 vector<int>connectedProcesses;
 
+
+void incrementClk()
+{
+	// Get Time in seconds
+	  	now = time(0);
+	  	tm = localtime (&now);
+	  	if (tm->tm_sec != currentTime)
+	  	{
+	  		currentTime = tm->tm_sec;
+
+	  		for (int i = 0; i < connectedProcesses.size(); ++i)
+	  		{
+	  			kill(connectedProcesses[i],SIGUSR2);
+	  		}
+
+		  	kill(disk_id,SIGUSR2);
+	  	}
+	
+}
+
+
 void kernelDead(int signum)
 {
 	cout<<"\nKernel....\nInterrupt Signal #"<<signum<<" received" <<endl;
@@ -68,41 +89,27 @@ void kernelDead(int signum)
 
 ////////////////////////////////////////////////////////////////////
 
-void send_message(msgbuff sentMessage,int n)
+void send_message(msgbuff &sentMessage,int n)
 {
 	string s;
 	if (n == 0)
 		s = "process";
 	else
 		s = "disk";
+	
+	int send_vall=-1;
 
-	send_val = msgsnd(downqid,&sentMessage,sizeof(sentMessage),IPC_NOWAIT);
+	//while(send_vall==-1){
+		send_vall = msgsnd(downqid,&sentMessage,sizeof(sentMessage),IPC_NOWAIT);
+		//incrementClk();
+
+	//}
 				
-	if (send_val == -1)
-		cout<<"Cannot send message to process"<<endl;
+	//	cout<<"Cannot send message to"<<s<<endl;
 
 }
 
 ////////////////////////////////////////////////////////////////////
-
-void incrementClk()
-{
-	// Get Time in seconds
-	  	now = time(0);
-	  	tm = localtime (&now);
-	  	if (tm->tm_sec != currentTime)
-	  	{
-	  		currentTime = tm->tm_sec;
-
-	  		for (int i = 0; i < connectedProcesses.size(); ++i)
-	  		{
-	  			kill(connectedProcesses[i],SIGUSR2);
-	  		}
-
-		  	kill(disk_id,SIGUSR2);
-	  	}
-	
-}
 
 ////////////////////////////////////////////////////////////////////
 
@@ -145,6 +152,8 @@ struct msgbuff requestDiskStatus()
 		if (rec_val == -1)
 			cout<<"Cannot receive status from disk"<<endl;
 
+		
+
 	return messageDiskStatus;
 }
 
@@ -158,12 +167,15 @@ void handleProcessOperation()
 	if (message.mOpMask == 0) // Add operation
 	{
 
-		if (convertCharArrToInt(messageDiskStatus.mtext) == 0)
+		if (convertCharArrToInt(messageDiskStatus.mtext) == 0){
+			cout<<"fulllll"<<endl;
 			message.mOpMask = 2; // if no empty slots
+		}
 		else
 		{
 			// empty slot exists
 			message.mOpMask = 1;
+			messageRequestToDisk.mOpMask=0; 
 			diskBusy = true;
 		}
 	}
@@ -171,13 +183,15 @@ void handleProcessOperation()
 	{	
 		
 		int state = messageDiskStatus.mOpMask;
-		int deletedSlot = (int)( message.mtext[0]);
+		int deletedSlot = (int)( message.mtext[0]-'0');
 
-
-		if ((state >> deletedSlot) & 1)
+		
+		if ((state & (1<<deletedSlot))>0)
 		{
 			// Slot is used
 			message.mOpMask = 3;
+			cout<<"want to del "<< deletedSlot<<endl;
+			messageRequestToDisk.mOpMask=1; 
 			diskBusy = true;
 		}
 		else
@@ -206,7 +220,7 @@ void messageFromProcess()
 
 	//Something receieved from process
 
-		if (message.mtype == 2)
+		if (message.mtype == 2) // process sending me its ID
 		{	
 			connectedProcesses.push_back(message.mOpMask);
 			cout<<"Process created"<<endl;
@@ -220,15 +234,21 @@ void messageFromProcess()
 			cout<<"Disk Status : free : "<<messageDiskStatus.mtext<<" Mask :"<<messageDiskStatus.mOpMask<<endl;
 	
 
-			messageRequestToDisk = message;
+			
 			
 
 			
 			handleProcessOperation();
 
+			//messageRequestToDisk = message;
 
-			if (diskBusy == true)
+
+			if (diskBusy == true){
+				send_message(message,0);
+				messageRequestToDisk.mtype=5; 
+				strcpy(messageRequestToDisk.mtext,message.mtext);
 				send_message(messageRequestToDisk,1);
+			}
 			else
 				send_message(message,0);
 	  					
@@ -272,20 +292,25 @@ int main()
 
 	waitDiskCreation();	
 
+	cout<<"Disk created"<<endl;
+
 
   	while (1)
   	{
   		incrementClk();	
 		
+  		if(diskBusy==true){
+  			// check if message recieved from disk to tell me it is free now
 
-		// check if message recieved from process BUT NOT WAIT FOR IT
-  			rec_val = msgrcv(upqid,&message,sizeof(message),3, IPC_NOWAIT);
-  		if (rec_val != -1)
-  		{
-  			cout<<"Disk is now free"<<endl;
-  			diskBusy = false;
+  			rec_val = msgrcv(upqid,&message,sizeof(message),4, IPC_NOWAIT);
+	  		if (rec_val != -1)
+	  		{
+	  			cout<<"Disk is now free at time "<<now<<endl;
+	  			diskBusy = false;
+	  		}
+
   		}
-
+	
 
  		
 		if (diskBusy == false)
@@ -296,7 +321,9 @@ int main()
 
 
 	  		if (rec_val != -1)
+	  		{
   				messageFromProcess();
+	  		}
 
   		}	
 
