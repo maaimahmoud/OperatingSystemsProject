@@ -29,7 +29,7 @@ struct msgbuff
 key_t upqid;
 key_t downqid;
 
-int clk=-1;
+int clk=0;
 
 void clk_inc(int signum)
 {
@@ -67,11 +67,16 @@ void send_msg(string op, string mess){
 
 int get_resp(){
 	struct msgbuff msg;
+	int rec_vall=-1;
 
-	int rec_val= msgrcv(downqid, &msg,sizeof(msg),getpid(),!IPC_NOWAIT);
+	while(rec_vall==-1){
+		rec_vall= msgrcv(downqid, &msg,sizeof(msg),getpid(),!IPC_NOWAIT);
 
-	if(rec_val==-1)
-		cout<<"Error in recieving from Kernel in process "<<endl;
+	}
+	
+
+//	if(rec_val==-1)
+	//	cout<<"Error in recieving from Kernel in process "<<endl;
 	return msg.mOpMask;
 
 }
@@ -120,7 +125,7 @@ int main(int argc, char **argv)
 
 	downqid = msgget(778,IPC_CREAT|0644);
 
-	cout<<"Up queue with id = "<<upqid << " Down queue with id = "<<downqid<<endl;
+	//cout<<"Up queue with id = "<<upqid << " Down queue with id = "<<downqid<<endl;
 
 	send_pid();
 
