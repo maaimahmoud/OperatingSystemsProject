@@ -34,7 +34,7 @@ int clk=0;
 void clk_inc(int signum)
 {
 	clk++;
-	// cout<<clk<<endl;
+	cout<<"clk = "<<clk<<endl;
 }
 
 
@@ -48,9 +48,13 @@ void send_msg(string op, string mess){
 
 	msg.mtype=getpid();
 	int  s=mess.size()>64? 64: mess.size();
-
-	for( int i=0; i<s; i++){
+	int i;
+	for( i=0; i<s; i++){
 		msg.mtext[i]=mess[i];
+	}
+	while(i<64){
+		msg.mtext[i]='\0';
+		i++;
 	}
 
 	cout<<" mssage type "<<msg.mOpMask<<" mtext :"<<msg.mtext<<" process ID: "<<msg.mtype<<endl;

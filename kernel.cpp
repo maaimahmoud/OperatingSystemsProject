@@ -87,6 +87,7 @@ void waitDiskCreation()
 
 void incrementClk()
 {
+
 	// Get Time in seconds
 	  	now = time(0);
 	  	tm = localtime (&now);
@@ -94,6 +95,7 @@ void incrementClk()
 	  	{
 	  		currentTime = tm->tm_sec;
 	  		clockCycles++;
+	  		cout << "clk ="<<clockCycles<<endl;
 
 	  		for (int i = 0; i < connectedProcesses.size(); ++i)
 	  		{
@@ -240,7 +242,8 @@ void messageFromProcess()
 
 
 			f << "PROCESS IS with pid = "<<message.mtype<<" Requesting operation ..."<<" AT time slot = "<<clockCycles<<endl;
-
+			cout << "PROCESS IS with pid = "<<message.mtype<<" Requesting operation ..."<<" AT time slot = "<<clockCycles<<endl;
+			
 			messageDiskStatus = requestDiskStatus();
 
 			f<<"Requesting Disk Status \n"<<flush;
@@ -288,10 +291,10 @@ void kernelDead(int signum)
 
 	rec_val = 0;
 	
-	while(rec_val != -1 )
+	do
 	{
-		rec_val = msgrcv(upqid,&message,sizeof(message),0,!IPC_NOWAIT);
-
+		rec_val = msgrcv(upqid,&message,sizeof(message),0,IPC_NOWAIT);
+		cout<<"Looping"<<endl;
 		if(rec_val != -1)
 		{
 
@@ -299,7 +302,7 @@ void kernelDead(int signum)
 				messageFromProcess();
 
 		}
-	}
+	}while(rec_val != -1 );
 
 	for (int i = 0; i < connectedProcesses.size(); ++i)
 	  	{

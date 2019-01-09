@@ -41,7 +41,13 @@ void clkIncrement(int signum)
 {
 	CLK += 1;
 
-	// cout<<CLK<<endl;
+	cout<<"clk = "<<CLK<<endl;
+
+	for (int i = 0; i < 10; ++i)
+	{
+		if (taken[i] == 1)
+			cout<<"Slot Number "<< i << " = " << space[i]<<endl;
+	}
 }
 
 void convert(int n,char* result)
@@ -105,8 +111,6 @@ void init()
 	Mask = 0;
 	
 	
-	//Start clk	
-		CLK = 0;
 
 	finishTime = -1;
 	
@@ -115,7 +119,6 @@ void init()
 
 bool save_data(msgbuff msg)
 {
-	finishTime = CLK + 3;
 	//cout<<"CLK = " << CLK<<"Finish time = "<<finishTime<<endl;
 
 	int i;
@@ -134,7 +137,7 @@ bool save_data(msgbuff msg)
 }
 bool  free_slot(msgbuff msg)
 {
-	finishTime = CLK + 1;
+	
 	//cout<<"CLK = " << CLK<<"Finish time = "<<finishTime<<endl;
 	
 
@@ -164,14 +167,18 @@ void handle_message(msgbuff msg)
 	int message_type = msg.mOpMask;
 
 	if (message_type == 0)
-		save_data(msg);
+		finishTime = CLK + 3;
 	else if(message_type == 1)
-		free_slot(msg);
+		finishTime = CLK + 1;
 	
 }
 
 int main()
 {
+
+	//Start clk	
+		CLK = 0;
+
 	//Handle Signals
 		signal (SIGUSR1,handle_SU1);
 		signal (SIGUSR2,clkIncrement);
@@ -181,6 +188,9 @@ int main()
 	init();
 
 	struct msgbuff message;
+
+	struct msgbuff savedMessage;
+
 
 	while(true)
 	{
@@ -204,13 +214,21 @@ int main()
 
 
 			finishTime = -1;
-		}
-		else{
 
-			int rec_val = msgrcv(downqid, &message, sizeof(message),0, IPC_NOWAIT); 
+			int message_type = savedMessage.mOpMask;
+
+			if (message_type == 0)
+				save_data(savedMessage);
+			else if(message_type == 1)
+				free_slot(savedMessage);
+		}
+		else
+		{
+
+			int rec_val = msgrcv(downqid, &savedMessage, sizeof(savedMessage),0, IPC_NOWAIT); 
 	
 			if(rec_val != -1)
-				handle_message(message);
+				handle_message(savedMessage);
 
 		}
 	}
